@@ -1,30 +1,96 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:profile_editor/src/avatar_image_picker.dart';
+import 'package:profile_editor/src/avatar_processor.dart';
+import 'package:profile_editor/src/avatar_storage.dart';
+import 'package:profile_editor/src/profile_screen.dart';
 
-import 'package:profile_editor/main.dart';
+class _FakeStorage implements AvatarStorage {
+  String? avatarPath;
+  bool removeShouldThrow = false;
+  int removeCalls = 0;
+
+  @override
+  Future<String?> getCurrentAvatarPath() async => avatarPath;
+
+  @override
+  Future<void> removeAvatar() async {
+    removeCalls += 1;
+    if (removeShouldThrow) {
+      throw StateError('remove failed');
+    }
+    avatarPath = null;
+  }
+
+  @override
+  Future<String> saveAvatar(Uint8List jpgBytes) async {
+    avatarPath = '/tmp/avatar.jpg';
+    return avatarPath!;
+  }
+}
+
+class _FakePicker implements AvatarPicker {
+  AvatarImageSource? lastSource;
+
+  @override
+  Future<String?> pickImage(AvatarImageSource source) async {
+    lastSource = source;
+    return null;
+  }
+}
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('edit avatar opens source chooser options', (
+    WidgetTester tester,
+  ) async {
+    final fakeStorage = _FakeStorage();
+    final fakePicker = _FakePicker();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfileScreen(
+          storage: fakeStorage,
+          imagePicker: fakePicker,
+          processor: AvatarProcessor(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    await tester.tap(find.text('Edit avatar'));
+    await tester.pumpAndSettle();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Camera'), findsOneWidget);
+    expect(find.text('Gallery'), findsOneWidget);
+    expect(find.text('Cancel'), findsOneWidget);
+  });
+
+  testWidgets('remove avatar asks for confirmation and cancels cleanly', (
+    WidgetTester tester,
+  ) async {
+    final fakeStorage = _FakeStorage()..avatarPath = '/tmp/avatar.jpg';
+    final fakePicker = _FakePicker();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfileScreen(
+          storage: fakeStorage,
+          imagePicker: fakePicker,
+          processor: AvatarProcessor(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Remove avatar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Remove current avatar?'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(fakeStorage.removeCalls, 0);
   });
 }

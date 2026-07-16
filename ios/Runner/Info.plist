@@ -26,6 +26,12 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Allow access to camera for taking a profile avatar photo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Allow access to photo library for selecting a profile avatar.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Allow saving edited profile avatar images.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
