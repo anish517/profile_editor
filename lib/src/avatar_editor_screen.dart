@@ -31,6 +31,7 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
   double _brightness = 0;
   bool _isBusy = false;
   bool _isDirty = false;
+  bool _allowPop = false;
 
   @override
   void initState() {
@@ -133,6 +134,7 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
       final jpg = await widget.processor.finalizeAvatar(pngBytes);
       final savedPath = await widget.storage.saveAvatar(jpg);
       if (!mounted) return;
+      _allowPop = true;
       Navigator.of(context).pop(savedPath);
     } catch (_) {
       if (!mounted) return;
@@ -180,6 +182,7 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
     if (didPop) return;
     final allowPop = await _confirmDiscardIfNeeded();
     if (allowPop && mounted) {
+      _allowPop = true;
       Navigator.of(context).pop();
     }
   }
@@ -236,7 +239,7 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
     );
 
     return PopScope(
-      canPop: false,
+      canPop: _allowPop,
       onPopInvokedWithResult: (didPop, _) => _handleBackNavigation(didPop),
       child: Scaffold(
         appBar: AppBar(
