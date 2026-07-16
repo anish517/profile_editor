@@ -1,5 +1,5 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -27,7 +27,6 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
   final GlobalKey _previewKey = GlobalKey();
   final TransformationController _controller = TransformationController();
 
-  Uint8List? _normalizedImage;
   double _zoom = 1.0;
   double _brightness = 0;
   bool _isBusy = false;
@@ -37,7 +36,6 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
   void initState() {
     super.initState();
     _controller.addListener(_syncZoomFromTransform);
-    _loadImage();
   }
 
   @override
@@ -45,28 +43,6 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
     _controller.removeListener(_syncZoomFromTransform);
     _controller.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadImage() async {
-    setState(() {
-      _isBusy = true;
-    });
-
-    try {
-      final bytes = await widget.processor.normalizeForEditing(
-        widget.sourcePath,
-      );
-      if (!mounted) return;
-      setState(() {
-        _normalizedImage = bytes;
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isBusy = false;
-        });
-      }
-    }
   }
 
   void _syncZoomFromTransform() {
@@ -81,8 +57,18 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
   Future<void> _setZoom(double value) async {
     final currentScale = _controller.value.getMaxScaleOnAxis();
     final ratio = value / currentScale;
-    final next = _controller.value.clone()
-      ..scaleByDouble(ratio, ratio, ratio, 1);
+
+    final box = _previewKey.currentContext?.findRenderObject() as RenderBox?;
+    final size = box?.size ?? const Size(300, 300);
+    final center = Offset(size.width / 2, size.height / 2);
+
+    final scaleMatrix = Matrix4.identity()
+      ..translateByDouble(center.dx, center.dy, 0, 1)
+      ..scaleByDouble(ratio, ratio, ratio, 1)
+      ..translateByDouble(-center.dx, -center.dy, 0, 1);
+
+    final next = scaleMatrix * _controller.value;
+
     setState(() {
       _zoom = value;
       _isDirty = true;
@@ -200,56 +186,54 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final image = _normalizedImage;
-    final preview = image == null
-        ? const SizedBox(
-            width: 300,
-            height: 300,
-            child: Center(child: CircularProgressIndicator()),
-          )
-        : SizedBox(
-            width: 300,
-            height: 300,
-            child: Stack(
-              children: [
-                RepaintBoundary(
-                  key: _previewKey,
-                  child: ClipRect(
-                    child: ColoredBox(
-                      color: Colors.black,
-                      child: InteractiveViewer(
-                        minScale: 1.0,
-                        maxScale: 4.0,
-                        transformationController: _controller,
-                        onInteractionStart: (_) {
-                          setState(() {
-                            _isDirty = true;
-                          });
-                        },
-                        child: ColorFiltered(
-                          colorFilter: ColorFilter.matrix(
-                            _brightnessMatrix(_brightness),
-                          ),
-                          child: Image.memory(
-                            image,
-                            fit: BoxFit.cover,
-                            width: 300,
-                            height: 300,
-                          ),
-                        ),
-                      ),
+    final preview = SizedBox(
+      width: 300,
+      height: 300,
+      child: Stack(
+        children: [
+          RepaintBoundary(
+            key: _previewKey,
+            child: ClipRect(
+              child: ColoredBox(
+                color: Colors.black,
+                child: InteractiveViewer(
+                  minScale: 1.0,
+                  maxScale: 4.0,
+                  transformationController: _controller,
+                  onInteractionStart: (_) {
+                    setState(() {
+                      _isDirty = true;
+                    });
+                  },
+                  child: ColorFiltered(
+                    colorFilter: ColorFilter.matrix(
+                      _brightnessMatrix(_brightness),
+                    ),
+                    child: Image.file(
+                      File(widget.sourcePath),
+                      fit: BoxFit.cover,
+                      width: 300,
+                      height: 300,
+                      errorBuilder: (_, _, _) {
+                        return const Center(
+                          child: Text('Could not load selected image.'),
+                        );
+                      },
                     ),
                   ),
                 ),
-                IgnorePointer(
-                  child: CustomPaint(
-                    size: const Size(300, 300),
-                    painter: _CircularAvatarOverlayPainter(),
-                  ),
-                ),
-              ],
+              ),
             ),
-          );
+          ),
+          IgnorePointer(
+            child: CustomPaint(
+              size: const Size(300, 300),
+              painter: _CircularAvatarOverlayPainter(),
+            ),
+          ),
+        ],
+      ),
+    );
 
     return PopScope(
       canPop: false,
@@ -263,7 +247,7 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
               child: const Text('Reset'),
             ),
             TextButton(
-              onPressed: image == null ? null : _save,
+              onPressed: _isBusy ? null : _save,
               child: const Text('Save avatar'),
             ),
           ],
@@ -280,7 +264,7 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
                 min: 1,
                 max: 4,
                 divisions: 300,
-                onChanged: image == null ? null : _setZoom,
+                onChanged: _isBusy ? null : _setZoom,
               ),
               const SizedBox(height: 12),
               const Text('Brightness'),
@@ -289,7 +273,7 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
                 min: -100,
                 max: 100,
                 divisions: 200,
-                onChanged: image == null
+                onChanged: _isBusy
                     ? null
                     : (value) {
                         setState(() {

@@ -27,6 +27,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   String? _avatarPath;
+  int _avatarRevision = 0;
 
   @override
   void initState() {
@@ -88,8 +89,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       );
       if (savedPath == null || !mounted) return;
+      await FileImage(File(savedPath)).evict();
       setState(() {
         _avatarPath = savedPath;
+        _avatarRevision += 1;
       });
     } on PlatformException {
       if (!mounted) return;
@@ -148,10 +151,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (shouldRemove != true) return;
 
     try {
+      final previousPath = _avatarPath;
       await widget.storage.removeAvatar();
+      if (previousPath != null) {
+        await FileImage(File(previousPath)).evict();
+      }
       if (!mounted) return;
       setState(() {
         _avatarPath = null;
+        _avatarRevision += 1;
       });
     } catch (_) {
       if (!mounted) return;
@@ -175,6 +183,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             CircleAvatar(
+              key: ValueKey('avatar-$_avatarRevision'),
               radius: 56,
               backgroundImage: avatarProvider,
               child: avatarProvider == null
